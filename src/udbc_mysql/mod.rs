@@ -1,4 +1,3 @@
 pub mod connection;
-pub mod value_codec;
 pub mod pool;
-
+pub mod value_codec;

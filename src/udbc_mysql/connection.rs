@@ -1,13 +1,13 @@
-use mysql_async::{Conn, Row as MyRow};
-use mysql_async::prelude::Queryable;
-use tokio::sync::Mutex;
 use async_trait::async_trait;
+use mysql_async::prelude::Queryable;
+use mysql_async::{Conn, Row as MyRow};
 use std::collections::HashMap;
+use tokio::sync::Mutex;
 
-use crate::rdbc::connection::Connection;
-use crate::rdbc::value::Value;
-use crate::rdbc_mysql::value_codec::{from_mysql_value, to_mysql_value};
 use crate::error::DbError;
+use crate::udbc::connection::Connection;
+use crate::udbc::value::Value;
+use crate::udbc_mysql::value_codec::{from_mysql_value, to_mysql_value};
 
 pub struct MysqlConnection {
     conn: Mutex<Conn>,
@@ -38,20 +38,22 @@ impl MysqlConnection {
 
 #[async_trait]
 impl Connection for MysqlConnection {
-    async fn query(&self, sql: &str, args: &[(String, Value)]) -> Result<Vec<HashMap<String, Value>>, DbError> {
+    async fn query(
+        &self,
+        sql: &str,
+        args: &[(String, Value)],
+    ) -> Result<Vec<HashMap<String, Value>>, DbError> {
         let mut conn = self.conn.lock().await;
-        let params = mysql_async::Params::Positional(
-            args.iter().map(|(_, v)| to_mysql_value(v)).collect()
-        );
+        let params =
+            mysql_async::Params::Positional(args.iter().map(|(_, v)| to_mysql_value(v)).collect());
         let rows: Vec<MyRow> = conn.exec(sql, params).await?;
         Ok(rows.into_iter().map(Self::map_row).collect())
     }
 
     async fn execute(&self, sql: &str, args: &[(String, Value)]) -> Result<u64, DbError> {
         let mut conn = self.conn.lock().await;
-        let params = mysql_async::Params::Positional(
-            args.iter().map(|(_, v)| to_mysql_value(v)).collect()
-        );
+        let params =
+            mysql_async::Params::Positional(args.iter().map(|(_, v)| to_mysql_value(v)).collect());
         conn.exec_drop(sql, params).await?;
         Ok(conn.affected_rows())
     }

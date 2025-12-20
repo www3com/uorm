@@ -1,14 +1,14 @@
+use crate::error::DbError;
+use crate::tpl::engine;
+use crate::transaction::TransactionContext;
+use crate::udbc::deserializer::RowDeserializer;
+use crate::udbc::driver::Driver;
+use crate::udbc::value::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::task_local;
-use crate::error::DbError;
-use crate::rdbc::deserializer::RowDeserializer;
-use crate::rdbc::pool::Pool;
-use crate::tpl::engine;
-use crate::transaction::TransactionContext;
 use tracing::debug;
-use std::collections::HashMap;
-use crate::rdbc::value::Value;
 
 task_local! {
     /// 当前任务的事务上下文
@@ -17,19 +17,17 @@ task_local! {
 
 /// 数据库客户端，封装了连接池操作
 pub struct Session {
-    pool: Arc<dyn Pool>,
+    pool: Arc<dyn Driver>,
 }
 
-
 impl Session {
-    pub fn new(pool: Arc<dyn Pool>) -> Self {
+    pub fn new(pool: Arc<dyn Driver>) -> Self {
         Self { pool }
     }
 
     pub async fn begin(&self) -> Result<TransactionContext, DbError> {
         TransactionContext::begin(self.pool.clone()).await
     }
-
 
     pub async fn execute<T>(&self, sql: &str, args: &T) -> Result<u64, DbError>
     where
@@ -44,8 +42,9 @@ impl Session {
             debug!(sql = %sql, elapsed_ms = elapsed_ms, affected = affected, error = ?err, "execute");
             result
         } else {
-            let (rendered_sql, params) = engine::render_template(sql, sql, args, self.pool.db_type());
-            let conn = self.pool.get_connection().await?;
+            let (rendered_sql, params) =
+                engine::render_template(sql, sql, args, self.pool.as_ref());
+            let conn = self.pool.connection().await?;
             let start = Instant::now();
             let result = conn.execute(&rendered_sql, &params).await;
             let elapsed_ms = start.elapsed().as_millis();
@@ -68,8 +67,9 @@ impl Session {
             debug!(sql = %sql, elapsed_ms = elapsed_ms, rows = rows.len(), "query");
             Self::map_rows(rows)
         } else {
-            let (rendered_sql, params) = engine::render_template(sql, sql, args, self.pool.db_type());
-            let conn = self.pool.get_connection().await?;
+            let (rendered_sql, params) =
+                engine::render_template(sql, sql, args, self.pool.as_ref());
+            let conn = self.pool.connection().await?;
             let start = Instant::now();
             let rows = conn.query(&rendered_sql, &params).await?;
             let elapsed_ms = start.elapsed().as_millis();
@@ -95,7 +95,7 @@ impl Session {
         if let Ok(ctx) = TX_CONTEXT.try_with(|tx| tx.clone()) {
             ctx.lock().await.last_insert_id().await
         } else {
-            let conn = self.pool.get_connection().await?;
+            let conn = self.pool.connection().await?;
             conn.last_insert_id().await
         }
     }

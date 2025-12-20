@@ -1,6 +1,6 @@
-use serde::de::{self, Deserializer, Visitor, MapAccess, IntoDeserializer};
 use crate::error::DbError;
-use crate::rdbc::value::Value;
+use crate::udbc::value::Value;
+use serde::de::{self, Deserializer, IntoDeserializer, MapAccess, Visitor};
 use std::collections::HashMap;
 
 pub struct RowDeserializer<'a> {
@@ -8,14 +8,18 @@ pub struct RowDeserializer<'a> {
 }
 
 impl<'a> RowDeserializer<'a> {
-    pub fn new(row: &'a HashMap<String, Value>) -> Self { Self { row } }
+    pub fn new(row: &'a HashMap<String, Value>) -> Self {
+        Self { row }
+    }
 }
 
 impl<'de, 'a> Deserializer<'de> for RowDeserializer<'a> {
     type Error = DbError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where V: Visitor<'de> {
+    where
+        V: Visitor<'de>,
+    {
         visitor.visit_map(RowMapAccess::new(self.row))
     }
 
@@ -33,7 +37,10 @@ struct RowMapAccess<'a> {
 
 impl<'a> RowMapAccess<'a> {
     fn new(row: &'a HashMap<String, Value>) -> Self {
-        Self { iter: row.iter(), current: None }
+        Self {
+            iter: row.iter(),
+            current: None,
+        }
     }
 }
 
@@ -41,27 +48,37 @@ impl<'de, 'a> MapAccess<'de> for RowMapAccess<'a> {
     type Error = DbError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
-    where K: de::DeserializeSeed<'de> {
+    where
+        K: de::DeserializeSeed<'de>,
+    {
         if let Some((k, v)) = self.iter.next() {
             self.current = Some((k, v));
             seed.deserialize(k.as_str().into_deserializer()).map(Some)
-        } else { Ok(None) }
+        } else {
+            Ok(None)
+        }
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
-    where V: de::DeserializeSeed<'de> {
+    where
+        V: de::DeserializeSeed<'de>,
+    {
         let (_k, v) = self.current.take().unwrap();
         seed.deserialize(ValueDeserializer { value: v })
     }
 }
 
-pub struct ValueDeserializer<'a> { pub value: &'a Value }
+pub struct ValueDeserializer<'a> {
+    pub value: &'a Value,
+}
 
 impl<'de, 'a> Deserializer<'de> for ValueDeserializer<'a> {
     type Error = DbError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where V: Visitor<'de> {
+    where
+        V: Visitor<'de>,
+    {
         match self.value {
             Value::Null => visitor.visit_unit(),
             Value::Bool(v) => visitor.visit_bool(*v),

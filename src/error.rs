@@ -18,17 +18,20 @@ pub enum DbError {
     #[error("Unsupported database type: {0}")]
     UnsupportedDatabaseType(String),
     #[error("Invalid database URL: {0}")]
-    InvalidDatabaseUrl( String),
+    InvalidDatabaseUrl(String),
     #[error("Database error: {0}")]
     Database(String),
-
 }
 
 impl serde::de::Error for DbError {
-    fn custom<T: std::fmt::Display>(msg: T) -> Self { DbError::General(msg.to_string()) }
+    fn custom<T: std::fmt::Display>(msg: T) -> Self {
+        DbError::General(msg.to_string())
+    }
 }
 
 #[cfg(feature = "mysql")]
 impl From<mysql_async::Error> for DbError {
-    fn from(e: mysql_async::Error) -> Self { DbError::Database(e.to_string()) }
+    fn from(e: mysql_async::Error) -> Self {
+        DbError::Database(e.to_string())
+    }
 }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapper namespace="test_ns">
+    <select id="selectUser">
+        SELECT * FROM users
+    </select>
+</mapper>

@@ -1,11 +1,15 @@
 use crate::error::DbError;
-use crate::rdbc::value::Value;
-use std::collections::HashMap;
+use crate::udbc::value::Value;
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 #[async_trait]
 pub trait Connection: Send + Sync {
-    async fn query(&self, sql: &str, args: &[(String, Value)]) -> Result<Vec<HashMap<String, Value>>, DbError>;
+    async fn query(
+        &self,
+        sql: &str,
+        args: &[(String, Value)],
+    ) -> Result<Vec<HashMap<String, Value>>, DbError>;
 
     async fn execute(&self, sql: &str, args: &[(String, Value)]) -> Result<u64, DbError>;
 

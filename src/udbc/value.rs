@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, DateTime, Utc};
+use crate::error::DbError;
+use crate::udbc;
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
-use crate::error::DbError;
-use crate::rdbc;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Value {
@@ -27,7 +27,7 @@ pub enum Value {
 
 /// 将 T: Serialize 转为 Vec<Value>
 pub fn to_values<T: Serialize>(t: &T) -> Result<Vec<Value>, DbError> {
-    let v = rdbc::serializer::to_value(t);
+    let v = udbc::serializer::to_value(t);
     let out = match v {
         Value::List(vec) => vec,
         Value::Map(map) => map.into_values().collect(),
@@ -37,28 +37,44 @@ pub fn to_values<T: Serialize>(t: &T) -> Result<Vec<Value>, DbError> {
 }
 
 impl From<bool> for Value {
-    fn from(v: bool) -> Self { Value::Bool(v) }
+    fn from(v: bool) -> Self {
+        Value::Bool(v)
+    }
 }
 impl From<i16> for Value {
-    fn from(v: i16) -> Self { Value::I16(v) }
+    fn from(v: i16) -> Self {
+        Value::I16(v)
+    }
 }
 impl From<i32> for Value {
-    fn from(v: i32) -> Self { Value::I32(v) }
+    fn from(v: i32) -> Self {
+        Value::I32(v)
+    }
 }
 impl From<i64> for Value {
-    fn from(v: i64) -> Self { Value::I64(v) }
+    fn from(v: i64) -> Self {
+        Value::I64(v)
+    }
 }
 impl From<u8> for Value {
-    fn from(v: u8) -> Self { Value::U8(v) }
+    fn from(v: u8) -> Self {
+        Value::U8(v)
+    }
 }
 impl From<f64> for Value {
-    fn from(v: f64) -> Self { Value::F64(v) }
+    fn from(v: f64) -> Self {
+        Value::F64(v)
+    }
 }
 impl From<String> for Value {
-    fn from(v: String) -> Self { Value::Str(v) }
+    fn from(v: String) -> Self {
+        Value::Str(v)
+    }
 }
 impl From<&str> for Value {
-    fn from(v: &str) -> Self { Value::Str(v.to_string()) }
+    fn from(v: &str) -> Self {
+        Value::Str(v.to_string())
+    }
 }
 
 #[cfg(test)]

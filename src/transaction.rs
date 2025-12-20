@@ -1,24 +1,27 @@
-use std::sync::Arc;
-use serde::Serialize;
 use crate::error::DbError;
-use crate::rdbc::connection::Connection;
-use crate::rdbc::pool::Pool;
-use crate::rdbc::value::Value;
-use crate::models::db_type::DatabaseType;
 use crate::tpl::engine;
+use crate::udbc::connection::Connection;
+use crate::udbc::driver::Driver;
+use crate::udbc::value::Value;
+use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct TransactionContext {
     conn: Arc<dyn Connection>,
     committed: bool,
-    db_type: DatabaseType,
+    driver: Arc<dyn Driver>,
 }
 
 impl TransactionContext {
-    pub async fn begin(pool: Arc<dyn Pool>) -> Result<Self, DbError> {
-        let conn = pool.get_connection().await?;
+    pub async fn begin(pool: Arc<dyn Driver>) -> Result<Self, DbError> {
+        let conn = pool.connection().await?;
         conn.begin().await?;
-        Ok(Self { conn, committed: false, db_type: pool.db_type() })
+        Ok(Self {
+            conn,
+            committed: false,
+            driver: pool,
+        })
     }
 
     pub async fn commit(&mut self) -> Result<(), DbError> {
@@ -35,13 +38,17 @@ impl TransactionContext {
         r
     }
 
-    pub async fn query<T: Serialize>(&self, sql: &str, args: &T) -> Result<Vec<HashMap<String, Value>>, DbError> {
-        let (rendered_sql, params) = engine::render_template(sql, sql, args, self.db_type);
+    pub async fn query<T: Serialize>(
+        &self,
+        sql: &str,
+        args: &T,
+    ) -> Result<Vec<HashMap<String, Value>>, DbError> {
+        let (rendered_sql, params) = engine::render_template(sql, sql, args, self.driver.as_ref());
         self.conn.query(&rendered_sql, &params).await
     }
 
     pub async fn execute<T: Serialize>(&self, sql: &str, args: &T) -> Result<u64, DbError> {
-        let (rendered_sql, params) = engine::render_template(sql, sql, args, self.db_type);
+        let (rendered_sql, params) = engine::render_template(sql, sql, args, self.driver.as_ref());
         self.conn.execute(&rendered_sql, &params).await
     }
 
@@ -49,12 +56,14 @@ impl TransactionContext {
         self.conn.last_insert_id().await
     }
 }
- 
+
 impl Drop for TransactionContext {
     fn drop(&mut self) {
         if !self.committed {
             let conn = self.conn.clone();
-            tokio::spawn(async move { let _ = conn.rollback().await; });
+            tokio::spawn(async move {
+                let _ = conn.rollback().await;
+            });
         }
     }
 }

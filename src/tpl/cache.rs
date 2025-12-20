@@ -1,9 +1,9 @@
+use crate::tpl::AstNode;
+use crate::tpl::parser::parse_template;
 use dashmap::DashMap;
-use std::sync::{Arc, LazyLock};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use crate::tpl::ast::AstNode;
-use crate::tpl::parser::parse_template;
+use std::sync::{Arc, LazyLock};
 
 #[derive(Clone)]
 pub struct CachedTemplate {
@@ -12,7 +12,8 @@ pub struct CachedTemplate {
 }
 
 /// 缓存模板 AST
-pub(crate) static TEMPLATE_CACHE: LazyLock<DashMap<String, CachedTemplate>> = LazyLock::new(DashMap::new);
+pub(crate) static TEMPLATE_CACHE: LazyLock<DashMap<String, CachedTemplate>> =
+    LazyLock::new(DashMap::new);
 
 pub(crate) fn get_ast(template_name: &str, template_content: &str) -> Arc<Vec<AstNode>> {
     let mut hasher = DefaultHasher::new();
@@ -26,9 +27,12 @@ pub(crate) fn get_ast(template_name: &str, template_content: &str) -> Arc<Vec<As
     }
 
     let ast = Arc::new(parse_template(template_content));
-    TEMPLATE_CACHE.insert(template_name.to_string(), CachedTemplate {
-        ast: ast.clone(),
-        content_hash: new_hash,
-    });
+    TEMPLATE_CACHE.insert(
+        template_name.to_string(),
+        CachedTemplate {
+            ast: ast.clone(),
+            content_hash: new_hash,
+        },
+    );
     ast
 }
