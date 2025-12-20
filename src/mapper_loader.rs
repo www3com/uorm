@@ -5,11 +5,14 @@ use quick_xml::de;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+
 
 /// SQL 映射对象，包含 SQL 内容及相关配置
 #[derive(Debug, Clone)]
 pub struct SqlMapper {
+    /// 数据库类型
+    pub database_type: Option<String>,
     /// SQL 文本内容
     pub content: Option<String>,
     /// 是否使用数据库自增主键
@@ -19,8 +22,8 @@ pub struct SqlMapper {
 }
 
 /// SQL 映射器存储仓库，使用 DashMap 实现并发安全的存储
-/// 结构：Namespace -> (ID -> SqlMapper)
-pub type SqlMapperStore = DashMap<String, DashMap<String, SqlMapper>>;
+/// 结构：Namespace -> (ID -> Vec<Arc<SqlMapper>>)
+pub type SqlMapperStore = DashMap<String, DashMap<String, Vec<Arc<SqlMapper>>>>;
 
 /// 全局单例的 SQL 映射器存储
 static SQL_MAPPERS: OnceLock<SqlMapperStore> = OnceLock::new();
@@ -75,6 +78,9 @@ pub struct SqlItem {
     /// SQL 语句唯一标识
     #[serde(rename = "@id")]
     pub id: String,
+    /// 数据库类型
+    #[serde(rename = "@databaseType")]
+    pub database_type: Option<String>,
     /// 是否使用自增主键配置字符串
     #[serde(rename = "@useGeneratedKeys")]
     pub use_generated_keys: Option<String>,
@@ -96,6 +102,7 @@ impl From<&SqlItem> for SqlMapper {
             .unwrap_or(false);
 
         Self {
+            database_type: item.database_type.clone(),
             content: item.content.clone(),
             use_generated_keys,
             key_column: item.key_column.clone(),
@@ -138,13 +145,28 @@ pub fn load_assets(assets: Vec<(&str, &str)>) -> Result<()> {
 ///
 /// # 参数
 /// * `sql_id` - 完整的 SQL ID，格式为 "namespace.id"
-pub fn find_mapper(sql_id: &str) -> Option<SqlMapper> {
+/// * `db_type` - 数据库类型，例如 "mysql", "postgres"
+pub fn find_mapper(sql_id: &str, db_type: &str) -> Option<Arc<SqlMapper>> {
     // 分割 namespace 和 id
     let (namespace, id) = sql_id.rsplit_once('.')?;
 
     let store = SQL_MAPPERS.get()?;
     let ns_map = store.get(namespace)?;
-    ns_map.get(id).map(|v| v.clone())
+    let mappers = ns_map.get(id)?;
+
+    // 优先匹配指定数据库类型，如果没有则使用默认（无数据库类型）的配置
+    let mut default_mapper = None;
+    for mapper in mappers.value() {
+        if let Some(ref t) = mapper.database_type {
+            if t == db_type {
+                return Some(mapper.clone());
+            }
+        } else {
+            default_mapper = Some(mapper.clone());
+        }
+    }
+
+    default_mapper
 }
 
 /// 处理单个 Mapper 文件
@@ -170,15 +192,23 @@ fn process_mapper_data(xml_content: &str, source: &str) -> Result<()> {
         if let Some(item) = node.into_item() {
             let sql_mapper = SqlMapper::from(&item);
 
-            // 检查 ID 是否重复
-            if ns_map.insert(item.id.clone(), sql_mapper).is_some() {
-                anyhow::bail!(
-                    "文件 '{}' 中发现重复的 ID: '{}' (命名空间: '{}')",
-                    source,
-                    item.id,
-                    namespace
-                );
+            // 获取该 ID 的映射列表
+            let mut mappers = ns_map.entry(item.id.clone()).or_insert_with(Vec::new);
+
+            // 检查是否存在相同 database_type 的配置
+            for existing in mappers.iter() {
+                if existing.database_type == sql_mapper.database_type {
+                    anyhow::bail!(
+                        "文件 '{}' 中发现重复的 ID: '{}' (命名空间: '{}', databaseType: '{:?}')",
+                        source,
+                        item.id,
+                        namespace,
+                        sql_mapper.database_type
+                    );
+                }
             }
+
+            mappers.push(Arc::new(sql_mapper));
         }
     }
     Ok(())

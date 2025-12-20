@@ -20,8 +20,8 @@ impl Mapper {
         Session::new(self.pool.clone())
     }
 
-    fn get_sql_mapper(&self, sql_id: &str) -> Result<crate::mapper_loader::SqlMapper, DbError> {
-        find_mapper(sql_id).ok_or_else(|| DbError::Query(format!("SQL ID not found: {}", sql_id)))
+    fn get_sql_mapper(&self, sql_id: &str) -> Result<std::sync::Arc<crate::mapper_loader::SqlMapper>, DbError> {
+        find_mapper(sql_id, self.pool.r#type()).ok_or_else(|| DbError::Query(format!("SQL ID not found: {}", sql_id)))
     }
 
     pub async fn get<R, T>(&self, sql_id: &str, args: &T) -> Result<R, DbError>
@@ -31,9 +31,11 @@ impl Mapper {
     {
         let mapper = self.get_sql_mapper(sql_id)?;
         let sql = mapper
+            .as_ref()
             .content
+            .as_ref()
             .ok_or_else(|| DbError::Query(format!("SQL content empty for {}", sql_id)))?;
-        let mut rows: Vec<R> = self.session().query(&sql, args).await?;
+        let mut rows: Vec<R> = self.session().query(sql, args).await?;
         if rows.len() > 1 {
             return Err(DbError::Query("Expected 1 row, got multiple".into()));
         }
@@ -47,9 +49,11 @@ impl Mapper {
     {
         let mapper = self.get_sql_mapper(sql_id)?;
         let sql = mapper
+            .as_ref()
             .content
+            .as_deref()
             .ok_or_else(|| DbError::Query(format!("SQL content empty for {}", sql_id)))?;
-        self.session().query(&sql, args).await
+        self.session().query(sql, args).await
     }
 
     pub async fn create<R, T>(&self, sql_id: &str, args: &T) -> Result<R, DbError>
@@ -59,11 +63,13 @@ impl Mapper {
     {
         let mapper = self.get_sql_mapper(sql_id)?;
         let sql = mapper
+            .as_ref()
             .content
+            .as_deref()
             .ok_or_else(|| DbError::Query(format!("SQL content empty for {}", sql_id)))?;
         let session = self.session();
 
-        let affected = session.execute(&sql, args).await?;
+        let affected = session.execute(sql, args).await?;
 
         if mapper.use_generated_keys {
             let id = session.last_insert_id().await?;
@@ -83,14 +89,16 @@ impl Mapper {
     {
         let mapper = self.get_sql_mapper(sql_id)?;
         let sql = mapper
+            .as_ref()
             .content
+            .as_ref()
             .ok_or_else(|| DbError::Query(format!("SQL content empty for {}", sql_id)))?;
         let session = self.session();
 
         let mut results = Vec::with_capacity(args.len());
 
         for arg in args {
-            let affected = session.execute(&sql, arg).await?;
+            let affected = session.execute(sql, arg).await?;
             let val = if mapper.use_generated_keys {
                 let id = session.last_insert_id().await?;
                 Value::I64(id as i64)
@@ -110,9 +118,11 @@ impl Mapper {
     {
         let mapper = self.get_sql_mapper(sql_id)?;
         let sql = mapper
+            .as_ref()
             .content
+            .as_deref()
             .ok_or_else(|| DbError::Query(format!("SQL content empty for {}", sql_id)))?;
-        self.session().execute(&sql, args).await
+        self.session().execute(sql, args).await
     }
 
     pub async fn delete<T>(&self, sql_id: &str, args: &T) -> Result<u64, DbError>
@@ -122,7 +132,8 @@ impl Mapper {
         let mapper = self.get_sql_mapper(sql_id)?;
         let sql = mapper
             .content
+            .as_ref()
             .ok_or_else(|| DbError::Query(format!("SQL content empty for {}", sql_id)))?;
-        self.session().execute(&sql, args).await
+        self.session().execute(sql, args).await
     }
 }

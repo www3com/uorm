@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::task_local;
-use tracing::debug;
+use log::debug;
 
 task_local! {
     /// 当前任务的事务上下文
@@ -39,7 +39,7 @@ impl Session {
             let elapsed_ms = start.elapsed().as_millis();
             let affected = result.as_ref().ok().copied();
             let err = result.as_ref().err().map(|e| e.to_string());
-            debug!(sql = %sql, elapsed_ms = elapsed_ms, affected = affected, error = ?err, "execute");
+            debug!("execute: sql={}, elapsed_ms={}, affected={:?}, error={:?}", sql, elapsed_ms, affected, err);
             result
         } else {
             let (rendered_sql, params) =
@@ -50,7 +50,7 @@ impl Session {
             let elapsed_ms = start.elapsed().as_millis();
             let affected = result.as_ref().ok().copied();
             let err = result.as_ref().err().map(|e| e.to_string());
-            debug!(sql = %rendered_sql, params = ?params, elapsed_ms = elapsed_ms, affected = affected, error = ?err, "Preparing query");
+            debug!("Preparing query: sql={}, params={:?}, elapsed_ms={}, affected={:?}, error={:?}", rendered_sql, params, elapsed_ms, affected, err);
             result
         }
     }
@@ -64,7 +64,7 @@ impl Session {
             let start = Instant::now();
             let rows = ctx.lock().await.query(sql, args).await?;
             let elapsed_ms = start.elapsed().as_millis();
-            debug!(sql = %sql, elapsed_ms = elapsed_ms, rows = rows.len(), "query");
+            debug!("query: sql={}, elapsed_ms={}, rows={}", sql, elapsed_ms, rows.len());
             Self::map_rows(rows)
         } else {
             let (rendered_sql, params) =
@@ -73,7 +73,7 @@ impl Session {
             let start = Instant::now();
             let rows = conn.query(&rendered_sql, &params).await?;
             let elapsed_ms = start.elapsed().as_millis();
-            debug!(sql = %rendered_sql, params = ?params, elapsed_ms = elapsed_ms, rows = rows.len(), "Preparing query");
+            debug!("Preparing query: sql={}, params={:?}, elapsed_ms={}, rows={}", rendered_sql, params, elapsed_ms, rows.len());
             Self::map_rows(rows)
         }
     }
